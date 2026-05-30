@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Big Bill — Kidza</title>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700;900&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Montserrat', sans-serif; background: #f5f5f5; color: #1a1a1a; min-height: 100vh; }
+
+  .app { max-width: 440px; margin: 0 auto; padding: 1rem; }
+
+  .app-header { text-align: center; padding: 1.25rem 0 1rem; }
+  .app-header img { height: 52px; object-fit: contain; }
+  .app-subtitle { font-size: 12px; color: #888; margin-top: 6px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; }
+
+  .card { background: #fff; border-radius: 14px; padding: 1.1rem 1.25rem; margin-bottom: 0.75rem; box-shadow: 0 1px 4px rgba(0,0,0,0.07); }
+  .card-title { font-size: 11px; font-weight: 700; color: #C0392B; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 12px; }
+
+  .field { margin-bottom: 12px; }
+  .field:last-child { margin-bottom: 0; }
+  .field label { display: block; font-size: 11px; font-weight: 700; color: #888; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 5px; }
+  .field select, .field input[type="text"], .field input[type="number"] {
+    width: 100%; padding: 10px 12px; border: 1.5px solid #e8e8e8; border-radius: 8px;
+    font-size: 15px; font-family: 'Montserrat', sans-serif; font-weight: 600;
+    background: #fafafa; outline: none; transition: border-color 0.15s;
+  }
+  .field select:focus, .field input:focus { border-color: #C0392B; background: #fff; }
+
+  .upload-area { border: 2px dashed #e0e0e0; border-radius: 10px; padding: 1rem; text-align: center; cursor: pointer; background: #fafafa; position: relative; transition: border-color 0.15s; }
+  .upload-area:hover { border-color: #C0392B; }
+  .upload-area input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+  .upload-icon { font-size: 26px; display: block; margin-bottom: 4px; }
+  .upload-hint { font-size: 12px; color: #aaa; font-weight: 600; }
+  .preview-wrap { margin-top: 10px; display: none; }
+  .preview-wrap img { width: 100%; max-height: 100px; object-fit: cover; border-radius: 8px; }
+
+  .btn-generate {
+    width: 100%; padding: 15px; border: none; border-radius: 12px;
+    background: #C0392B; color: #fff; font-size: 16px; font-weight: 700;
+    font-family: 'Montserrat', sans-serif; letter-spacing: 0.05em;
+    cursor: pointer; margin-top: 0.25rem; transition: background 0.15s, transform 0.1s;
+  }
+  .btn-generate:hover { background: #a93226; }
+  .btn-generate:active { transform: scale(0.98); }
+
+  .result { display: none; margin-top: 1rem; }
+  .result canvas { width: 100%; border-radius: 12px; display: block; box-shadow: 0 4px 16px rgba(0,0,0,0.12); }
+  .btn-download {
+    width: 100%; margin-top: 10px; padding: 13px; border-radius: 10px;
+    background: #fff; border: 2px solid #C0392B; color: #C0392B;
+    font-size: 15px; font-weight: 700; font-family: 'Montserrat', sans-serif;
+    cursor: pointer; transition: background 0.15s;
+  }
+  .btn-download:hover { background: #fff5f5; }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <div class="app-header">
+    <img id="kidzaLogo" src="" alt="Kidza" />
+    <div class="app-subtitle">Big Bill Achievement Card</div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Store & Staff Details</div>
+
+    <div class="field">
+      <label>Store Name</label>
+      <select id="store">
+        <option value="">Select store…</option>
+        <option>Kattur</option>
+        <option>Cumbum</option>
+        <option>MGT</option>
+        <option>Theni</option>
+        <option>Dindigul</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label>Staff Name</label>
+      <input type="text" id="staff" placeholder="Enter full name" />
+    </div>
+
+    <div class="field">
+      <label>Bill Value (₹)</label>
+      <input type="number" id="billval" placeholder="e.g. 15265" />
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Staff Photo</div>
+    <div class="upload-area" id="uploadArea">
+      <input type="file" id="photoInput" accept="image/*" onchange="handlePhoto(this)" />
+      <span class="upload-icon">📷</span>
+      <div class="upload-hint">Tap to upload staff photo</div>
+    </div>
+    <div class="preview-wrap" id="previewWrap">
+      <img id="previewImg" alt="Staff preview" />
+    </div>
+  </div>
+
+  <button class="btn-generate" onclick="generateCard()">✦ Generate Image</button>
+
+  <div class="result" id="result">
+    <canvas id="cardCanvas"></canvas>
+    <button class="btn-download" onclick="downloadCard()">⬇ Download Image</button>
+  </div>
+
+</div>
+
+<script>
+// ── Kidza logo (baked-in base64) ──────────────────────────────────────────────
+const LOGO_B64 = "data:image/jpeg;base64,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r6e91C5lvrqf78tx87tVeiilSS1PqowhTioQSS7BRRRVmgUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAex/se/8nG+EPrea/8ASaWv0+X7or8wP2Q/+TjPCH/Xe5/9JZa/T8da+hy/+D8z+bvEf/kao/7C/OUUUUV6x+SBSGlprH5TQAHbX4j+KvGGteOtcuda17UZtT1K4P7ySU/d/wBhR/CvvX7c1+RFx+7upU/vOy/rXiZi/hR/QPhhT/e4mp2S/wAyOiiivFP24KKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKA//2Q==";
+
+// load logo into the header img
+document.getElementById('kidzaLogo').src = LOGO_B64;
+
+let photoDataURL = null;
+
+function handlePhoto(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    photoDataURL = e.target.result;
+    const wrap = document.getElementById('previewWrap');
+    const img  = document.getElementById('previewImg');
+    img.src = photoDataURL;
+    wrap.style.display = 'block';
+  };
+  reader.readAsDataURL(file);
+}
+
+// ── real metallic gold gradient helper ────────────────────────────────────────
+function goldGrad(ctx, x1, y1, x2, y2) {
+  const g = ctx.createLinearGradient(x1, y1, x2, y2);
+  g.addColorStop(0,    '#FFF5B0');
+  g.addColorStop(0.18, '#FFD700');
+  g.addColorStop(0.38, '#C8960C');
+  g.addColorStop(0.55, '#FFD700');
+  g.addColorStop(0.75, '#DAA520');
+  g.addColorStop(1,    '#8B6508');
+  return g;
+}
+
+function drawGoldText(ctx, text, cx, y, size) {
+  ctx.font = `900 ${size}px Montserrat, Arial Black, sans-serif`;
+  ctx.textAlign = 'center';
+  const g = ctx.createLinearGradient(cx - 250, y - size, cx + 250, y + size * 0.2);
+  g.addColorStop(0,    '#FFFACD');
+  g.addColorStop(0.2,  '#FFD700');
+  g.addColorStop(0.45, '#B8860B');
+  g.addColorStop(0.65, '#FFD700');
+  g.addColorStop(0.85, '#DAA520');
+  g.addColorStop(1,    '#9A7200');
+  ctx.fillStyle = g;
+  ctx.fillText(text, cx, y);
+}
+
+function drawGoldValueText(ctx, text, cx, y, size) {
+  ctx.font = `900 ${size}px Montserrat, Arial Black, sans-serif`;
+  ctx.textAlign = 'center';
+  const g = ctx.createLinearGradient(cx - 220, y - size, cx + 220, y + size * 0.3);
+  g.addColorStop(0,    '#FFFDE0');
+  g.addColorStop(0.15, '#FFD700');
+  g.addColorStop(0.4,  '#B8860B');
+  g.addColorStop(0.6,  '#FFD700');
+  g.addColorStop(0.8,  '#DAA520');
+  g.addColorStop(1,    '#8B6508');
+  ctx.fillStyle = g;
+  ctx.fillText(text, cx, y);
+}
+
+// ── corner ornament ────────────────────────────────────────────────────────────
+function corner(ctx, x, y, sx, sy, W, H) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(sx, sy);
+  const g = goldGrad(ctx, 0, 0, 42, 42);
+  ctx.strokeStyle = g;
+  ctx.lineWidth   = 3;
+  ctx.beginPath();
+  ctx.moveTo(0, 40); ctx.lineTo(0, 0); ctx.lineTo(40, 0);
+  ctx.stroke();
+  ctx.restore();
+}
+
+// ── main generate ──────────────────────────────────────────────────────────────
+function generateCard() {
+  const store = document.getElementById('store').value;
+  const staff = document.getElementById('staff').value.trim();
+  const bill  = document.getElementById('billval').value.trim();
+
+  if (!store || !staff || !bill) {
+    alert('Please fill all fields before generating.');
+    return;
+  }
+
+  const canvas = document.getElementById('cardCanvas');
+  const W = 800, H = 1080;
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext('2d');
+
+  function draw(photoImg, logoImg) {
+    ctx.clearRect(0, 0, W, H);
+
+    // ── white background ──────────────────────────────────────────────────────
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, W, H);
+
+    // ── gold outer border ─────────────────────────────────────────────────────
+    ctx.strokeStyle = goldGrad(ctx, 0, 0, W, H);
+    ctx.lineWidth   = 10;
+    ctx.strokeRect(5, 5, W - 10, H - 10);
+
+    // ── red header ────────────────────────────────────────────────────────────
+    ctx.fillStyle = '#C0392B';
+    ctx.fillRect(0, 0, W, 270);
+
+    // gold bottom line of header
+    ctx.fillStyle = goldGrad(ctx, 0, 262, W, 272);
+    ctx.fillRect(0, 262, W, 10);
+
+    // ── Kidza logo top-left ───────────────────────────────────────────────────
+    if (logoImg) {
+      // draw on white pill so the red logo shows on red header
+      const lw = 200, lh = 62, lx = 28, ly = 16;
+      ctx.fillStyle = 'rgba(255,255,255,0.92)';
+      ctx.beginPath(); ctx.roundRect(lx - 8, ly - 4, lw + 16, lh + 8, 10); ctx.fill();
+      ctx.drawImage(logoImg, lx, ly, lw, lh);
+    }
+
+    // ── crown + BIG BILL (gold) ───────────────────────────────────────────────
+    ctx.font = '48px serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('👑', W / 2, 62);
+
+    drawGoldText(ctx, 'BIG  BILL', W / 2, 152, 86);
+
+    // thin gold underline
+    ctx.fillStyle = goldGrad(ctx, W / 2 - 190, 162, W / 2 + 190, 166);
+    ctx.fillRect(W / 2 - 190, 162, 380, 4);
+
+    // ── "We Appreciate You!" white italic ─────────────────────────────────────
+    ctx.font = 'italic 600 21px Montserrat, Georgia, serif';
+    ctx.fillStyle = 'rgba(255,255,255,0.93)';
+    ctx.textAlign = 'center';
+    ctx.fillText('We Appreciate You!', W / 2, 200);
+
+    // ── achievement pill ──────────────────────────────────────────────────────
+    ctx.fillStyle = '#A12820';
+    ctx.beginPath(); ctx.roundRect(W / 2 - 170, 214, 340, 46, 23); ctx.fill();
+    ctx.strokeStyle = goldGrad(ctx, W / 2 - 170, 214, W / 2 + 170, 260);
+    ctx.lineWidth = 2; ctx.stroke();
+    ctx.font = 'bold 14px Montserrat, sans-serif';
+    ctx.fillStyle = '#FFE566';
+    ctx.textAlign = 'center';
+    ctx.fillText('★   ACHIEVEMENT AWARD   ★', W / 2, 242);
+
+    // ── cream info card ───────────────────────────────────────────────────────
+    ctx.fillStyle = '#FFF9F9';
+    ctx.beginPath(); ctx.roundRect(34, 282, W - 68, 404, 16); ctx.fill();
+    ctx.strokeStyle = goldGrad(ctx, 34, 282, 34 + W - 68, 282 + 404);
+    ctx.lineWidth = 1.5; ctx.stroke();
+
+    // ── photo box ─────────────────────────────────────────────────────────────
+    const px = 440, py = 298, pw = 296, ph = 360;
+    ctx.fillStyle = '#EEE';
+    ctx.beginPath(); ctx.roundRect(px, py, pw, ph, 12); ctx.fill();
+    ctx.strokeStyle = '#C0392B'; ctx.lineWidth = 3; ctx.stroke();
+
+    if (photoImg) {
+      ctx.save();
+      ctx.beginPath(); ctx.roundRect(px, py, pw, ph, 12); ctx.clip();
+      ctx.drawImage(photoImg, px, py, pw, ph);
+      ctx.restore();
+    } else {
+      ctx.font = '70px serif';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#ccc';
+      ctx.fillText('🧑', px + pw / 2, py + ph / 2 + 22);
+    }
+
+    // ── award badge below photo ───────────────────────────────────────────────
+    const bx = px + pw / 2, by = py + ph + 46;
+    ctx.fillStyle = '#C0392B';
+    ctx.beginPath(); ctx.arc(bx, by, 50, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = goldGrad(ctx, bx - 50, by - 50, bx + 50, by + 50);
+    ctx.lineWidth = 3; ctx.stroke();
+    ctx.font = 'bold 12px Montserrat'; ctx.fillStyle = '#FFE082'; ctx.textAlign = 'center';
+    ctx.fillText('GREAT', bx, by - 6);
+    ctx.fillText('WORK! ⭐', bx, by + 14);
+
+    // ── info rows (left) ──────────────────────────────────────────────────────
+    function infoRow(icon, labelTxt, valueTxt, valueSz, vy) {
+      ctx.fillStyle = '#C0392B';
+      ctx.beginPath(); ctx.arc(72, vy, 26, 0, Math.PI * 2); ctx.fill();
+      ctx.font = '18px serif'; ctx.textAlign = 'center';
+      ctx.fillText(icon, 72, vy + 7);
+
+      ctx.font = 'bold 11px Montserrat'; ctx.fillStyle = '#aaa'; ctx.textAlign = 'left';
+      ctx.fillText(labelTxt, 110, vy - 10);
+
+      ctx.font = `bold ${valueSz}px Montserrat`; ctx.fillStyle = '#1a1a1a';
+      ctx.fillText(valueTxt, 110, vy + 22);
+
+      ctx.strokeStyle = '#FFE0DB'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(110, vy + 36); ctx.lineTo(400, vy + 36); ctx.stroke();
+    }
+
+    infoRow('🏪', 'STORE NAME', store, 32, 346);
+    infoRow('👤', 'STAFF NAME', staff, 32, 452);
+
+    // bill value in GOLD (bigger)
+    const bvy = 558;
+    ctx.fillStyle = '#C0392B';
+    ctx.beginPath(); ctx.arc(72, bvy, 26, 0, Math.PI * 2); ctx.fill();
+    ctx.font = 'bold 16px Montserrat'; ctx.textAlign = 'center'; ctx.fillStyle = '#fff';
+    ctx.fillText('₹', 72, bvy + 7);
+
+    ctx.font = 'bold 11px Montserrat'; ctx.fillStyle = '#aaa'; ctx.textAlign = 'left';
+    ctx.fillText('BILL VALUE', 110, bvy - 10);
+
+    drawGoldValueText(ctx, '₹' + Number(bill).toLocaleString('en-IN') + ' /-', 272, bvy + 36, 46);
+
+    ctx.strokeStyle = '#FFE0DB'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(110, bvy + 50); ctx.lineTo(400, bvy + 50); ctx.stroke();
+
+    // ── red message box ───────────────────────────────────────────────────────
+    ctx.fillStyle = '#C0392B';
+    ctx.beginPath(); ctx.roundRect(34, 706, W - 68, 170, 16); ctx.fill();
+    ctx.strokeStyle = goldGrad(ctx, 34, 706, 34 + W - 68, 706 + 170);
+    ctx.lineWidth = 2; ctx.stroke();
+
+    ctx.font = '500 17px Montserrat'; ctx.fillStyle = '#fff'; ctx.textAlign = 'left';
+    ctx.fillText('Thank you for going above and beyond!', 60, 744);
+    ctx.fillText('Your dedication & positive attitude make', 60, 772);
+    ctx.fillText('a huge difference every single day.', 60, 800);
+    ctx.font = 'bold 18px Montserrat'; ctx.fillStyle = '#FFE566';
+    ctx.fillText('Keep shining, superstar! ✦', 60, 842);
+    ctx.font = '28px serif'; ctx.textAlign = 'right';
+    ctx.fillText('🏆', W - 56, 832);
+
+    // ── footer ────────────────────────────────────────────────────────────────
+    ctx.fillStyle = '#A12820';
+    ctx.fillRect(0, H - 98, W, 98);
+    ctx.fillStyle = goldGrad(ctx, 0, H - 100, W, H - 96);
+    ctx.fillRect(0, H - 100, W, 4);
+
+    ctx.font = 'italic bold 22px Montserrat, Georgia, serif';
+    ctx.fillStyle = goldGrad(ctx, W / 2 - 210, H - 68, W / 2 + 210, H - 38);
+    ctx.textAlign = 'center';
+    ctx.fillText('— You Make Us Proud! —', W / 2, H - 60);
+    ctx.font = '20px serif';
+    ctx.fillText('★  👑  ★  👑  ★', W / 2, H - 24);
+
+    // ── gold corner ornaments ─────────────────────────────────────────────────
+    corner(ctx, 22, 22,  1,  1);
+    corner(ctx, W - 22, 22, -1,  1);
+    corner(ctx, 22, H - 22,  1, -1);
+    corner(ctx, W - 22, H - 22, -1, -1);
+  }
+
+  // load logo image, then photo, then draw
+  const logoImg = new Image();
+  logoImg.onload = () => {
+    if (photoDataURL) {
+      const photoImg = new Image();
+      photoImg.onload = () => draw(photoImg, logoImg);
+      photoImg.src = photoDataURL;
+    } else {
+      draw(null, logoImg);
+    }
+  };
+  logoImg.src = LOGO_B64;
+
+  document.getElementById('result').style.display = 'block';
+  setTimeout(() => document.getElementById('result').scrollIntoView({ behavior: 'smooth' }), 150);
+}
+
+function downloadCard() {
+  const canvas = document.getElementById('cardCanvas');
+  const staff  = document.getElementById('staff').value.trim() || 'staff';
+  const link   = document.createElement('a');
+  link.download = 'BigBill_' + staff + '.png';
+  link.href = canvas.toDataURL('image/png');
+  link.click();
+}
+</script>
+</body>
+</html>
