@@ -204,7 +204,18 @@ function generateCard() {
   canvas.width = W; canvas.height = H;
   const ctx = canvas.getContext('2d');
 
+  // Offscreen canvas for reliable download (avoids display:none rendering issues)
+  const offscreen = document.createElement('canvas');
+  offscreen.width = W; offscreen.height = H;
+  window._bigBillOffscreen = offscreen;
+  const octx = offscreen.getContext('2d');
+
   function draw(photoImg, logoImg) {
+    // Draw on both visible and offscreen canvas
+    [ctx, octx].forEach(c => drawOnCtx(c, photoImg, logoImg));
+  }
+
+  function drawOnCtx(ctx, photoImg, logoImg) {
     ctx.clearRect(0, 0, W, H);
 
     // ── white background ──────────────────────────────────────────────────────
@@ -364,30 +375,52 @@ function generateCard() {
     corner(ctx, W - 22, H - 22, -1, -1);
   }
 
-  // load logo image, then photo, then draw
-  const logoImg = new Image();
-  logoImg.onload = () => {
-    if (photoDataURL) {
-      const photoImg = new Image();
-      photoImg.onload = () => draw(photoImg, logoImg);
-      photoImg.src = photoDataURL;
-    } else {
-      draw(null, logoImg);
-    }
-  };
-  logoImg.src = LOGO_B64;
-
+  // Show result FIRST so canvas is visible/active during draw
   document.getElementById('result').style.display = 'block';
   setTimeout(() => document.getElementById('result').scrollIntoView({ behavior: 'smooth' }), 150);
+
+  // Wait for fonts, then load logo, then draw
+  document.fonts.ready.then(() => {
+    const logoImg = new Image();
+    logoImg.onload = () => {
+      if (photoDataURL) {
+        // Reuse the already-loaded preview <img> element — guaranteed loaded, no CORS issues
+        const existingImg = document.getElementById('previewImg');
+        if (existingImg && existingImg.complete && existingImg.naturalWidth > 0) {
+          draw(existingImg, logoImg);
+        } else {
+          // Fallback: load fresh
+          const photoImg = new Image();
+          photoImg.onload = () => draw(photoImg, logoImg);
+          photoImg.onerror = () => draw(null, logoImg);
+          photoImg.src = photoDataURL;
+        }
+      } else {
+        draw(null, logoImg);
+      }
+    };
+    logoImg.onerror = () => draw(null, null);
+    logoImg.src = LOGO_B64;
+  });
 }
 
 function downloadCard() {
-  const canvas = document.getElementById('cardCanvas');
-  const staff  = document.getElementById('staff').value.trim() || 'staff';
-  const link   = document.createElement('a');
-  link.download = 'BigBill_' + staff + '.png';
-  link.href = canvas.toDataURL('image/png');
-  link.click();
+  const staff = document.getElementById('staff').value.trim() || 'staff';
+  // Use offscreen canvas for download to avoid any display/rendering issues
+  const src = window._bigBillOffscreen || document.getElementById('cardCanvas');
+  try {
+    const dataURL = src.toDataURL('image/png');
+    const link = document.createElement('a');
+    link.download = 'BigBill_' + staff + '.png';
+    link.href = dataURL;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  } catch(e) {
+    // Fallback: open in new tab
+    const w = window.open();
+    w.document.write('<img src="' + src.toDataURL('image/png') + '" style="max-width:100%">');
+  }
 }
 </script>
 </body>
