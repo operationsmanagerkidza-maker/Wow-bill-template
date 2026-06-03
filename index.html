@@ -92,8 +92,8 @@
 
   <div class="card">
     <div class="card-title">Staff Photo</div>
-    <div class="upload-area" id="uploadArea">
-      <input type="file" id="photoInput" accept="image/*" onchange="handlePhoto(this)" />
+    <div class="upload-area" id="uploadArea" onclick="requestPhoto()">
+      <input type="file" id="photoInput" accept="image/*" onchange="handlePhotoFile(this)" style="display:none" />
       <span class="upload-icon">📷</span>
       <div class="upload-hint">Tap to upload staff photo</div>
     </div>
@@ -120,19 +120,46 @@ document.getElementById('kidzaLogo').src = LOGO_B64;
 
 let photoDataURL = null;
 
-function handlePhoto(input) {
+// Detect if running inside MIT App Inventor WebViewer
+function isMITApp() {
+  return (typeof window.AppInventor !== 'undefined');
+}
+
+// Called when upload area is tapped
+function requestPhoto() {
+  if (isMITApp()) {
+    window.AppInventor.setWebViewString('PICK_PHOTO');
+  } else {
+    document.getElementById('photoInput').click();
+  }
+}
+
+// Called by file input (normal browser)
+function handlePhotoFile(input) {
   const file = input.files[0];
   if (!file) return;
-  window._staffPhoto = null;   // reset
-
+  window._staffPhoto = null;
   const objectURL = URL.createObjectURL(file);
   const img = new Image();
   img.onload = function() {
-    window._staffPhoto = img;  // store decoded image — ready for canvas
+    window._staffPhoto = img;
     document.getElementById('previewImg').src = objectURL;
     document.getElementById('previewWrap').style.display = 'block';
   };
   img.src = objectURL;
+}
+
+// Called by App Inventor — receives base64 image string
+function receivePhotoFromApp(base64Data) {
+  const src = base64Data.startsWith('data:') ? base64Data : 'data:image/jpeg;base64,' + base64Data;
+  window._staffPhoto = null;
+  const img = new Image();
+  img.onload = function() {
+    window._staffPhoto = img;
+    document.getElementById('previewImg').src = src;
+    document.getElementById('previewWrap').style.display = 'block';
+  };
+  img.src = src;
 }
 
 // ── real metallic gold gradient helper ────────────────────────────────────────
@@ -387,7 +414,9 @@ function generateCard() {
 
   // Wait for fonts, then draw
   document.fonts.ready.then(() => {
-    const photoImg = window._staffPhoto || null;  // set by handlePhoto when fully loaded
+    // Use the preview <img> element directly — it is already loaded and on screen
+    const previewImg = document.getElementById('previewImg');
+    const photoImg = window._staffPhoto || null;
 
     const logoImg = new Image();
     logoImg.onload = () => draw(photoImg, logoImg);
