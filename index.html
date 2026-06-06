@@ -85,6 +85,15 @@
     </div>
 
     <div class="field">
+      <label>Gender</label>
+      <select id="gender">
+        <option value="">Select gender…</option>
+        <option value="male">Male</option>
+        <option value="female">Female</option>
+      </select>
+    </div>
+
+    <div class="field">
       <label>Bill Value (₹)</label>
       <input type="number" id="billval" placeholder="e.g. 15265" />
     </div>
@@ -92,8 +101,8 @@
 
   <div class="card">
     <div class="card-title">Staff Photo</div>
-    <div class="upload-area" id="uploadArea" onclick="requestPhoto()">
-      <input type="file" id="photoInput" accept="image/*" onchange="handlePhotoFile(this)" style="display:none" />
+    <div class="upload-area" id="uploadArea">
+      <input type="file" id="photoInput" accept="image/*" onchange="handlePhoto(this)" />
       <span class="upload-icon">📷</span>
       <div class="upload-hint">Tap to upload staff photo</div>
     </div>
@@ -120,46 +129,20 @@ document.getElementById('kidzaLogo').src = LOGO_B64;
 
 let photoDataURL = null;
 
-// Detect if running inside MIT App Inventor WebViewer
-function isMITApp() {
-  return (typeof window.AppInventor !== 'undefined');
-}
-
-// Called when upload area is tapped
-function requestPhoto() {
-  if (isMITApp()) {
-    window.AppInventor.setWebViewString('PICK_PHOTO');
-  } else {
-    document.getElementById('photoInput').click();
-  }
-}
-
-// Called by file input (normal browser)
-function handlePhotoFile(input) {
+function handlePhoto(input) {
   const file = input.files[0];
   if (!file) return;
-  window._staffPhoto = null;
-  const objectURL = URL.createObjectURL(file);
-  const img = new Image();
-  img.onload = function() {
-    window._staffPhoto = img;
-    document.getElementById('previewImg').src = objectURL;
-    document.getElementById('previewWrap').style.display = 'block';
-  };
-  img.src = objectURL;
-}
+  window._photoFile = file;
+  window._photoImg = null;
+  photoDataURL = null;
 
-// Called by App Inventor — receives base64 image string
-function receivePhotoFromApp(base64Data) {
-  const src = base64Data.startsWith('data:') ? base64Data : 'data:image/jpeg;base64,' + base64Data;
-  window._staffPhoto = null;
-  const img = new Image();
-  img.onload = function() {
-    window._staffPhoto = img;
-    document.getElementById('previewImg').src = src;
+  const reader = new FileReader();
+  reader.onload = e => {
+    photoDataURL = e.target.result;
+    document.getElementById('previewImg').src = photoDataURL;
     document.getElementById('previewWrap').style.display = 'block';
   };
-  img.src = src;
+  reader.readAsDataURL(file);
 }
 
 // ── real metallic gold gradient helper ────────────────────────────────────────
@@ -216,13 +199,526 @@ function corner(ctx, x, y, sx, sy, W, H) {
   ctx.restore();
 }
 
+// ── superhero tier helper ─────────────────────────────────────────────────────
+function getHeroTier(bill) {
+  const v = Number(bill);
+  if (v >= 15000) return 3;   // Red Hulk / Red She-Hulk
+  if (v >= 10000) return 2;   // Hulk / She-Hulk
+  if (v >= 5000)  return 1;   // Spider-Man / Spider-Woman
+  return 0;
+}
+
+// ── draw superhero SVG overlay on canvas ──────────────────────────────────────
+function drawHeroOverlay(ctx, px, py, pw, ph, tier, gender) {
+  if (tier === 0) return;
+
+  // Build an SVG string for the hero, then draw it as an image
+  const isMale = gender === 'male';
+
+  // Tier 1: Spider-Man / Spider-Woman
+  // Tier 2: Hulk / She-Hulk
+  // Tier 3: Red Hulk / Red She-Hulk
+
+  const svgMap = {
+    1: {
+      male: buildSpiderManSVG(),
+      female: buildSpiderWomanSVG()
+    },
+    2: {
+      male: buildHulkSVG(),
+      female: buildSheHulkSVG()
+    },
+    3: {
+      male: buildRedHulkSVG(),
+      female: buildRedSheHulkSVG()
+    }
+  };
+
+  const svgStr = isMale ? svgMap[tier].male : svgMap[tier].female;
+  const blob = new Blob([svgStr], { type: 'image/svg+xml' });
+  const url  = URL.createObjectURL(blob);
+  const img  = new Image();
+  img.src = url;
+  // Already loaded synchronously via SVG blob in same tick — return promise
+  return new Promise(resolve => {
+    img.onload = () => {
+      // Draw full SVG in the photo box area
+      ctx.save();
+      ctx.beginPath();
+      ctx.roundRect(px, py, pw, ph, 12);
+      ctx.clip();
+      ctx.drawImage(img, px, py, pw, ph);
+      ctx.restore();
+      // Reddish border for hero
+      ctx.strokeStyle = tier === 3 ? '#8B0000' : (tier === 2 ? '#2d6a2d' : '#1a1a8c');
+      ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.roundRect(px, py, pw, ph, 12); ctx.stroke();
+      URL.revokeObjectURL(url);
+      resolve();
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(); };
+  });
+}
+
+// ─── Superhero SVG builders ───────────────────────────────────────────────────
+
+function buildSpiderManSVG() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 296 360">
+  <defs>
+    <radialGradient id="bgSM" cx="50%" cy="40%" r="60%">
+      <stop offset="0%" stop-color="#1a1a3a"/>
+      <stop offset="100%" stop-color="#0a0a1a"/>
+    </radialGradient>
+    <radialGradient id="glowSM" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#ff2222" stop-opacity="0.3"/>
+      <stop offset="100%" stop-color="#ff2222" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="296" height="360" fill="url(#bgSM)"/>
+  <!-- city silhouette subtle -->
+  <rect x="0" y="280" width="40" height="80" fill="#111122"/>
+  <rect x="50" y="260" width="30" height="100" fill="#111122"/>
+  <rect x="220" y="270" width="40" height="90" fill="#111122"/>
+  <rect x="265" y="255" width="31" height="105" fill="#111122"/>
+  <!-- glow halo -->
+  <ellipse cx="148" cy="140" rx="100" ry="100" fill="url(#glowSM)"/>
+  <!-- Body: blue legs -->
+  <rect x="72" y="285" width="64" height="75" rx="14" fill="#1a1a8c"/>
+  <rect x="160" y="285" width="64" height="75" rx="14" fill="#1a1a8c"/>
+  <!-- torso red -->
+  <ellipse cx="148" cy="278" rx="74" ry="55" fill="#CC0000"/>
+  <!-- chest web lines -->
+  <line x1="148" y1="228" x2="148" y2="328" stroke="#880000" stroke-width="1.5"/>
+  <line x1="76" y1="260" x2="220" y2="260" stroke="#880000" stroke-width="1.5"/>
+  <path d="M148 228 Q108 244 78 262" stroke="#880000" stroke-width="1" fill="none"/>
+  <path d="M148 228 Q188 244 218 262" stroke="#880000" stroke-width="1" fill="none"/>
+  <path d="M148 262 Q106 276 82 298" stroke="#880000" stroke-width="1" fill="none"/>
+  <path d="M148 262 Q190 276 214 298" stroke="#880000" stroke-width="1" fill="none"/>
+  <!-- spider symbol on chest -->
+  <ellipse cx="148" cy="252" rx="13" ry="8" fill="#111" opacity="0.9"/>
+  <line x1="148" y1="244" x2="138" y2="234" stroke="#111" stroke-width="2.5"/>
+  <line x1="148" y1="244" x2="158" y2="234" stroke="#111" stroke-width="2.5"/>
+  <line x1="135" y1="255" x2="123" y2="247" stroke="#111" stroke-width="2"/>
+  <line x1="161" y1="255" x2="173" y2="247" stroke="#111" stroke-width="2"/>
+  <!-- shoulders/arms blue -->
+  <ellipse cx="84" cy="248" rx="26" ry="22" fill="#1a1a8c"/>
+  <ellipse cx="212" cy="248" rx="26" ry="22" fill="#1a1a8c"/>
+  <!-- web shooter sparkle -->
+  <circle cx="82" cy="256" r="7" fill="#FFD700" opacity="0.9"/>
+  <line x1="82" y1="256" x2="48" y2="228" stroke="#FFD700" stroke-width="2" opacity="0.8"/>
+  <line x1="82" y1="256" x2="42" y2="260" stroke="#FFD700" stroke-width="1.2" opacity="0.6"/>
+  <!-- Neck -->
+  <rect x="132" y="196" width="32" height="26" rx="7" fill="#CC0000"/>
+  <!-- HEAD - bigger, centered high -->
+  <ellipse cx="148" cy="158" rx="78" ry="82" fill="#CC0000"/>
+  <!-- mask web lines on head -->
+  <path d="M148 76 L148 240" stroke="#880000" stroke-width="1.5" fill="none"/>
+  <path d="M72 142 Q148 130 224 142" stroke="#880000" stroke-width="1.2" fill="none"/>
+  <path d="M78 165 Q148 153 218 165" stroke="#880000" stroke-width="1.2" fill="none"/>
+  <path d="M80 188 Q148 175 216 188" stroke="#880000" stroke-width="1" fill="none"/>
+  <path d="M76 118 Q148 106 220 118" stroke="#880000" stroke-width="1" fill="none"/>
+  <path d="M148 76 Q115 96 88 124" stroke="#880000" stroke-width="1.2" fill="none"/>
+  <path d="M148 76 Q181 96 208 124" stroke="#880000" stroke-width="1.2" fill="none"/>
+  <!-- EYES: big white lenses - the most iconic feature -->
+  <ellipse cx="117" cy="150" rx="32" ry="22" fill="white" stroke="#880000" stroke-width="2.5"/>
+  <ellipse cx="179" cy="150" rx="32" ry="22" fill="white" stroke="#880000" stroke-width="2.5"/>
+  <!-- inner eye blue sheen -->
+  <ellipse cx="117" cy="150" rx="25" ry="16" fill="#cce0ff" opacity="0.75"/>
+  <ellipse cx="179" cy="150" rx="25" ry="16" fill="#cce0ff" opacity="0.75"/>
+  <!-- eye glints -->
+  <ellipse cx="108" cy="143" rx="7" ry="4" fill="white" opacity="0.9"/>
+  <ellipse cx="170" cy="143" rx="7" ry="4" fill="white" opacity="0.9"/>
+  <!-- label -->
+  <rect x="50" y="328" width="196" height="28" rx="9" fill="#880000" opacity="0.95"/>
+  <text x="148" y="347" text-anchor="middle" font-family="Arial Black,sans-serif" font-size="14" font-weight="900" fill="#FFD700">SPIDER-MAN</text>
+</svg>`;
+}
+
+function buildSpiderWomanSVG() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 296 360">
+  <defs>
+    <radialGradient id="bgSW" cx="50%" cy="40%" r="60%">
+      <stop offset="0%" stop-color="#1a0a2a"/>
+      <stop offset="100%" stop-color="#0a0a1a"/>
+    </radialGradient>
+    <radialGradient id="glowSW" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#cc0044" stop-opacity="0.3"/>
+      <stop offset="100%" stop-color="#cc0044" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="296" height="360" fill="url(#bgSW)"/>
+  <rect x="0" y="280" width="40" height="80" fill="#110a1a"/>
+  <rect x="50" y="255" width="30" height="105" fill="#110a1a"/>
+  <rect x="220" y="270" width="40" height="90" fill="#110a1a"/>
+  <ellipse cx="148" cy="140" rx="100" ry="100" fill="url(#glowSW)"/>
+  <!-- legs yellow -->
+  <rect x="76" y="285" width="58" height="75" rx="14" fill="#FFD700"/>
+  <rect x="162" y="285" width="58" height="75" rx="14" fill="#FFD700"/>
+  <!-- torso red -->
+  <ellipse cx="148" cy="274" rx="70" ry="52" fill="#CC0033"/>
+  <!-- yellow V stripe -->
+  <polygon points="148,226 106,286 190,286" fill="#FFD700" opacity="0.9"/>
+  <!-- spider on chest -->
+  <ellipse cx="148" cy="256" rx="12" ry="7" fill="#111" opacity="0.85"/>
+  <line x1="148" y1="249" x2="140" y2="240" stroke="#111" stroke-width="2.5"/>
+  <line x1="148" y1="249" x2="156" y2="240" stroke="#111" stroke-width="2.5"/>
+  <line x1="136" y1="258" x2="126" y2="250" stroke="#111" stroke-width="2"/>
+  <line x1="160" y1="258" x2="170" y2="250" stroke="#111" stroke-width="2"/>
+  <!-- shoulders yellow -->
+  <ellipse cx="84" cy="248" rx="26" ry="20" fill="#FFD700"/>
+  <ellipse cx="212" cy="248" rx="26" ry="20" fill="#FFD700"/>
+  <!-- web spark -->
+  <circle cx="84" cy="256" r="7" fill="#FFD700" opacity="0.9"/>
+  <line x1="84" y1="256" x2="52" y2="230" stroke="#FFD700" stroke-width="2" opacity="0.8"/>
+  <!-- neck -->
+  <rect x="130" y="194" width="36" height="26" rx="7" fill="#CC0033"/>
+  <!-- HEAD big and centered high -->
+  <ellipse cx="148" cy="158" rx="78" ry="82" fill="#CC0033"/>
+  <!-- web lines on head -->
+  <path d="M148 76 L148 240" stroke="#880022" stroke-width="1.5" fill="none"/>
+  <path d="M72 142 Q148 130 224 142" stroke="#880022" stroke-width="1.2" fill="none"/>
+  <path d="M78 165 Q148 153 218 165" stroke="#880022" stroke-width="1.2" fill="none"/>
+  <path d="M80 188 Q148 175 216 188" stroke="#880022" stroke-width="1" fill="none"/>
+  <path d="M76 118 Q148 106 220 118" stroke="#880022" stroke-width="1" fill="none"/>
+  <path d="M148 76 Q115 96 88 124" stroke="#880022" stroke-width="1.2" fill="none"/>
+  <path d="M148 76 Q181 96 208 124" stroke="#880022" stroke-width="1.2" fill="none"/>
+  <!-- yellow hair flowing -->
+  <ellipse cx="148" cy="80" rx="80" ry="30" fill="#FFD700"/>
+  <path d="M72 100 Q54 140 62 185" stroke="#FFD700" stroke-width="18" fill="none" stroke-linecap="round"/>
+  <path d="M224 100 Q242 140 234 185" stroke="#FFD700" stroke-width="18" fill="none" stroke-linecap="round"/>
+  <!-- EYES: big white lenses -->
+  <ellipse cx="117" cy="152" rx="30" ry="21" fill="white" stroke="#880022" stroke-width="2.5"/>
+  <ellipse cx="179" cy="152" rx="30" ry="21" fill="white" stroke="#880022" stroke-width="2.5"/>
+  <ellipse cx="117" cy="152" rx="23" ry="15" fill="#ffe0f0" opacity="0.75"/>
+  <ellipse cx="179" cy="152" rx="23" ry="15" fill="#ffe0f0" opacity="0.75"/>
+  <ellipse cx="108" cy="145" rx="7" ry="4" fill="white" opacity="0.9"/>
+  <ellipse cx="170" cy="145" rx="7" ry="4" fill="white" opacity="0.9"/>
+  <!-- label -->
+  <rect x="38" y="328" width="220" height="28" rx="9" fill="#880022" opacity="0.95"/>
+  <text x="148" y="347" text-anchor="middle" font-family="Arial Black,sans-serif" font-size="13" font-weight="900" fill="#FFD700">SPIDER-WOMAN</text>
+</svg>`;
+}
+
+function buildHulkSVG() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 296 360">
+  <defs>
+    <radialGradient id="bgH" cx="50%" cy="40%" r="70%">
+      <stop offset="0%" stop-color="#0a1a0a"/>
+      <stop offset="100%" stop-color="#050d05"/>
+    </radialGradient>
+    <radialGradient id="glowH" cx="50%" cy="45%" r="55%">
+      <stop offset="0%" stop-color="#00cc00" stop-opacity="0.3"/>
+      <stop offset="100%" stop-color="#00cc00" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="296" height="360" fill="url(#bgH)"/>
+  <rect x="0" y="265" width="50" height="95" fill="#071007"/>
+  <rect x="55" y="248" width="35" height="112" fill="#071007"/>
+  <rect x="210" y="260" width="45" height="100" fill="#071007"/>
+  <ellipse cx="148" cy="150" rx="110" ry="110" fill="url(#glowH)"/>
+  <!-- torn purple pants -->
+  <rect x="66" y="278" width="68" height="82" rx="10" fill="#6b3fa0"/>
+  <rect x="162" y="278" width="68" height="82" rx="10" fill="#6b3fa0"/>
+  <!-- torn edges -->
+  <path d="M66 295 Q78 288 90 295 Q102 302 114 295 Q124 288 134 295" fill="none" stroke="#4a2a70" stroke-width="1.5"/>
+  <path d="M162 295 Q174 288 186 295 Q198 302 210 295 Q220 288 230 295" fill="none" stroke="#4a2a70" stroke-width="1.5"/>
+  <!-- massive torso green -->
+  <ellipse cx="148" cy="268" rx="100" ry="66" fill="#3a9a3a"/>
+  <!-- muscle definition -->
+  <path d="M148 222 Q148 268 148 316" stroke="#2a7a2a" stroke-width="2.5" fill="none"/>
+  <path d="M96 248 Q148 238 200 248" stroke="#2a7a2a" stroke-width="2" fill="none"/>
+  <ellipse cx="106" cy="260" rx="26" ry="30" fill="#2e8a2e"/>
+  <ellipse cx="190" cy="260" rx="26" ry="30" fill="#2e8a2e"/>
+  <path d="M106 230 Q148 220 190 230" stroke="#2a7a2a" stroke-width="2.5" fill="none"/>
+  <!-- huge shoulders -->
+  <ellipse cx="70" cy="240" rx="42" ry="36" fill="#3a9a3a"/>
+  <ellipse cx="226" cy="240" rx="42" ry="36" fill="#3a9a3a"/>
+  <!-- neck thick -->
+  <rect x="122" y="192" width="52" height="30" rx="10" fill="#3a9a3a"/>
+  <!-- HEAD big and wide -->
+  <ellipse cx="148" cy="152" rx="84" ry="82" fill="#3a9a3a"/>
+  <!-- jaw square -->
+  <rect x="86" y="166" width="124" height="50" rx="10" fill="#3a9a3a"/>
+  <!-- brow ridge heavy -->
+  <rect x="82" y="132" width="132" height="26" rx="7" fill="#2e8a2e"/>
+  <!-- EYES: big white sclera, green iris, angry -->
+  <ellipse cx="116" cy="148" rx="26" ry="19" fill="white"/>
+  <ellipse cx="180" cy="148" rx="26" ry="19" fill="white"/>
+  <ellipse cx="116" cy="150" rx="16" ry="14" fill="#00aa00"/>
+  <ellipse cx="180" cy="150" rx="16" ry="14" fill="#00aa00"/>
+  <ellipse cx="116" cy="150" rx="9" ry="10" fill="#003300"/>
+  <ellipse cx="180" cy="150" rx="9" ry="10" fill="#003300"/>
+  <ellipse cx="110" cy="144" rx="4" ry="3" fill="white" opacity="0.9"/>
+  <ellipse cx="174" cy="144" rx="4" ry="3" fill="white" opacity="0.9"/>
+  <!-- angry eyebrows -->
+  <path d="M88 130 Q116 120 144 128" stroke="#1a5a1a" stroke-width="8" fill="none" stroke-linecap="round"/>
+  <path d="M152 128 Q180 120 208 130" stroke="#1a5a1a" stroke-width="8" fill="none" stroke-linecap="round"/>
+  <!-- nose flat broad -->
+  <path d="M134 168 Q148 178 162 168" stroke="#2a7a2a" stroke-width="3" fill="none"/>
+  <!-- grimace mouth -->
+  <path d="M104 186 Q148 178 192 186" stroke="#2a7a2a" stroke-width="3.5" fill="none"/>
+  <rect x="108" y="184" width="80" height="7" rx="3.5" fill="#1a5a1a" opacity="0.5"/>
+  <!-- ears -->
+  <ellipse cx="64" cy="152" rx="16" ry="22" fill="#3a9a3a"/>
+  <ellipse cx="232" cy="152" rx="16" ry="22" fill="#3a9a3a"/>
+  <!-- hair dark green -->
+  <path d="M78 110 Q148 78 218 110" stroke="#1a4a1a" stroke-width="22" fill="none" stroke-linecap="round"/>
+  <!-- label -->
+  <rect x="70" y="328" width="156" height="28" rx="9" fill="#1a5a1a" opacity="0.95"/>
+  <text x="148" y="347" text-anchor="middle" font-family="Arial Black,sans-serif" font-size="16" font-weight="900" fill="#88ff88">HULK</text>
+</svg>`;
+}
+
+function buildSheHulkSVG() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 296 360">
+  <defs>
+    <radialGradient id="bgSH" cx="50%" cy="40%" r="70%">
+      <stop offset="0%" stop-color="#0a1a12"/>
+      <stop offset="100%" stop-color="#050d08"/>
+    </radialGradient>
+    <radialGradient id="glowSH" cx="50%" cy="45%" r="55%">
+      <stop offset="0%" stop-color="#22cc66" stop-opacity="0.3"/>
+      <stop offset="100%" stop-color="#22cc66" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="296" height="360" fill="url(#bgSH)"/>
+  <rect x="0" y="265" width="50" height="95" fill="#071007"/>
+  <rect x="220" y="260" width="45" height="100" fill="#071007"/>
+  <ellipse cx="148" cy="150" rx="110" ry="110" fill="url(#glowSH)"/>
+  <!-- legs purple -->
+  <rect x="72" y="280" width="62" height="80" rx="12" fill="#8855cc"/>
+  <rect x="162" y="280" width="62" height="80" rx="12" fill="#8855cc"/>
+  <!-- torso green feminine -->
+  <ellipse cx="148" cy="264" rx="84" ry="62" fill="#3ab870"/>
+  <!-- waist taper -->
+  <ellipse cx="148" cy="278" rx="62" ry="20" fill="#3ab870"/>
+  <!-- muscle lines subtle -->
+  <path d="M148 224 L148 312" stroke="#2a9a58" stroke-width="2" fill="none"/>
+  <path d="M104 248 Q148 240 192 248" stroke="#2a9a58" stroke-width="1.5" fill="none"/>
+  <!-- shoulders -->
+  <ellipse cx="78" cy="240" rx="34" ry="28" fill="#3ab870"/>
+  <ellipse cx="218" cy="240" rx="34" ry="28" fill="#3ab870"/>
+  <!-- neck -->
+  <rect x="126" y="192" width="44" height="30" rx="8" fill="#3ab870"/>
+  <!-- HEAD big -->
+  <ellipse cx="148" cy="150" rx="80" ry="82" fill="#3ab870"/>
+  <!-- jaw -->
+  <rect x="90" y="166" width="116" height="48" rx="12" fill="#3ab870"/>
+  <!-- brow subtle -->
+  <rect x="88" y="136" width="120" height="18" rx="6" fill="#2e9a5a"/>
+  <!-- EYES: big white, green, feminine -->
+  <ellipse cx="116" cy="149" rx="26" ry="20" fill="white"/>
+  <ellipse cx="180" cy="149" rx="26" ry="20" fill="white"/>
+  <ellipse cx="116" cy="151" rx="17" ry="14" fill="#22aa55"/>
+  <ellipse cx="180" cy="151" rx="17" ry="14" fill="#22aa55"/>
+  <ellipse cx="116" cy="151" rx="9" ry="10" fill="#003322"/>
+  <ellipse cx="180" cy="151" rx="9" ry="10" fill="#003322"/>
+  <ellipse cx="109" cy="144" rx="5" ry="4" fill="white" opacity="0.9"/>
+  <ellipse cx="173" cy="144" rx="5" ry="4" fill="white" opacity="0.9"/>
+  <!-- feminine eyebrows -->
+  <path d="M88 132 Q116 124 144 130" stroke="#1a6640" stroke-width="5" fill="none" stroke-linecap="round"/>
+  <path d="M152 130 Q180 124 208 132" stroke="#1a6640" stroke-width="5" fill="none" stroke-linecap="round"/>
+  <!-- nose -->
+  <path d="M138 166 Q148 173 158 166" stroke="#2a9a58" stroke-width="2.5" fill="none"/>
+  <!-- mouth slight smile -->
+  <path d="M112 182 Q148 196 184 182" stroke="#1a6640" stroke-width="3" fill="none"/>
+  <!-- lips -->
+  <ellipse cx="148" cy="185" rx="25" ry="7" fill="#cc5588" opacity="0.75"/>
+  <!-- ears -->
+  <ellipse cx="68" cy="152" rx="14" ry="20" fill="#3ab870"/>
+  <ellipse cx="228" cy="152" rx="14" ry="20" fill="#3ab870"/>
+  <!-- long dark green hair -->
+  <path d="M76 110 Q148 78 220 110" stroke="#1a5a30" stroke-width="24" fill="none" stroke-linecap="round"/>
+  <path d="M76 122 Q60 178 66 232" stroke="#1a5a30" stroke-width="18" fill="none" stroke-linecap="round"/>
+  <path d="M220 122 Q236 178 230 232" stroke="#1a5a30" stroke-width="18" fill="none" stroke-linecap="round"/>
+  <!-- label -->
+  <rect x="56" y="328" width="184" height="28" rx="9" fill="#1a5a30" opacity="0.95"/>
+  <text x="148" y="347" text-anchor="middle" font-family="Arial Black,sans-serif" font-size="14" font-weight="900" fill="#aaffcc">SHE-HULK</text>
+</svg>`;
+}
+
+function buildRedHulkSVG() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 296 360">
+  <defs>
+    <radialGradient id="bgRH" cx="50%" cy="40%" r="70%">
+      <stop offset="0%" stop-color="#1a0505"/>
+      <stop offset="100%" stop-color="#0d0202"/>
+    </radialGradient>
+    <radialGradient id="glowRH" cx="50%" cy="45%" r="55%">
+      <stop offset="0%" stop-color="#ff3300" stop-opacity="0.45"/>
+      <stop offset="100%" stop-color="#ff3300" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="296" height="360" fill="url(#bgRH)"/>
+  <rect x="0" y="265" width="50" height="95" fill="#0d0202"/>
+  <rect x="220" y="260" width="45" height="100" fill="#0d0202"/>
+  <ellipse cx="148" cy="145" rx="115" ry="115" fill="url(#glowRH)"/>
+  <!-- steam/heat wisps -->
+  <path d="M96 72 Q102 56 96 40" stroke="#ff6622" stroke-width="3.5" fill="none" opacity="0.55" stroke-linecap="round"/>
+  <path d="M148 66 Q154 48 148 32" stroke="#ff8833" stroke-width="3.5" fill="none" opacity="0.55" stroke-linecap="round"/>
+  <path d="M200 72 Q206 56 200 40" stroke="#ff6622" stroke-width="3.5" fill="none" opacity="0.55" stroke-linecap="round"/>
+  <!-- pants dark gray -->
+  <rect x="62" y="274" width="70" height="86" rx="10" fill="#3a3a3a"/>
+  <rect x="164" y="274" width="70" height="86" rx="10" fill="#3a3a3a"/>
+  <!-- massive torso red -->
+  <ellipse cx="148" cy="262" rx="104" ry="70" fill="#cc2200"/>
+  <!-- muscle definition -->
+  <path d="M148 216 L148 322" stroke="#aa1800" stroke-width="3" fill="none"/>
+  <path d="M92 244 Q148 234 204 244" stroke="#aa1800" stroke-width="2.5" fill="none"/>
+  <ellipse cx="100" cy="256" rx="28" ry="32" fill="#b81e00"/>
+  <ellipse cx="196" cy="256" rx="28" ry="32" fill="#b81e00"/>
+  <path d="M100 222 Q148 212 196 222" stroke="#aa1800" stroke-width="3" fill="none"/>
+  <!-- huge shoulders -->
+  <ellipse cx="66" cy="232" rx="46" ry="40" fill="#cc2200"/>
+  <ellipse cx="230" cy="232" rx="46" ry="40" fill="#cc2200"/>
+  <!-- neck massive -->
+  <rect x="118" y="188" width="60" height="36" rx="10" fill="#cc2200"/>
+  <!-- HEAD extra wide -->
+  <ellipse cx="148" cy="148" rx="90" ry="86" fill="#cc2200"/>
+  <rect x="80" y="162" width="136" height="54" rx="10" fill="#cc2200"/>
+  <!-- brow ridge very heavy -->
+  <rect x="76" y="128" width="144" height="28" rx="8" fill="#aa1800"/>
+  <!-- EYES: big glowing orange-yellow intense -->
+  <ellipse cx="114" cy="146" rx="28" ry="20" fill="#ffaa00"/>
+  <ellipse cx="182" cy="146" rx="28" ry="20" fill="#ffaa00"/>
+  <ellipse cx="114" cy="148" rx="17" ry="14" fill="#ff6600"/>
+  <ellipse cx="182" cy="148" rx="17" ry="14" fill="#ff6600"/>
+  <ellipse cx="114" cy="148" rx="9" ry="10" fill="#220000"/>
+  <ellipse cx="182" cy="148" rx="9" ry="10" fill="#220000"/>
+  <ellipse cx="107" cy="141" rx="5" ry="4" fill="#ffeeaa" opacity="0.9"/>
+  <ellipse cx="175" cy="141" rx="5" ry="4" fill="#ffeeaa" opacity="0.9"/>
+  <!-- eye glow rings -->
+  <ellipse cx="114" cy="146" rx="28" ry="20" fill="none" stroke="#ffaa00" stroke-width="2.5" opacity="0.65"/>
+  <ellipse cx="182" cy="146" rx="28" ry="20" fill="none" stroke="#ffaa00" stroke-width="2.5" opacity="0.65"/>
+  <!-- eyebrows angry very heavy -->
+  <path d="M82 126 Q114 114 146 124" stroke="#7a1000" stroke-width="10" fill="none" stroke-linecap="round"/>
+  <path d="M150 124 Q182 114 214 126" stroke="#7a1000" stroke-width="10" fill="none" stroke-linecap="round"/>
+  <!-- nose flat wide -->
+  <path d="M130 168 Q148 180 166 168" stroke="#aa1800" stroke-width="3.5" fill="none"/>
+  <!-- mouth grimace teeth -->
+  <path d="M96 186 Q148 176 200 186" stroke="#7a1000" stroke-width="4" fill="none"/>
+  <rect x="104" y="184" width="88" height="9" rx="4.5" fill="#7a1000" opacity="0.65"/>
+  <rect x="112" y="182" width="11" height="9" rx="2" fill="white" opacity="0.85"/>
+  <rect x="128" y="182" width="11" height="9" rx="2" fill="white" opacity="0.85"/>
+  <rect x="157" y="182" width="11" height="9" rx="2" fill="white" opacity="0.85"/>
+  <rect x="173" y="182" width="11" height="9" rx="2" fill="white" opacity="0.85"/>
+  <!-- ears -->
+  <ellipse cx="58" cy="150" rx="18" ry="24" fill="#cc2200"/>
+  <ellipse cx="238" cy="150" rx="18" ry="24" fill="#cc2200"/>
+  <!-- dark hair short -->
+  <path d="M72 112 Q148 78 224 112" stroke="#4a0800" stroke-width="22" fill="none" stroke-linecap="round"/>
+  <!-- label -->
+  <rect x="54" y="328" width="188" height="28" rx="9" fill="#7a1000" opacity="0.95"/>
+  <text x="148" y="347" text-anchor="middle" font-family="Arial Black,sans-serif" font-size="15" font-weight="900" fill="#ffaa66">RED HULK</text>
+</svg>`;
+}
+
+function buildRedSheHulkSVG() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 296 360">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="40%" r="70%">
+      <stop offset="0%" stop-color="#1a0508"/>
+      <stop offset="100%" stop-color="#0d0205"/>
+    </radialGradient>
+    <radialGradient id="glow" cx="50%" cy="45%" r="55%">
+      <stop offset="0%" stop-color="#ff2244" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#ff2244" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="296" height="360" fill="url(#bgRSH)"/>
+  <rect x="0" y="260" width="50" height="100" fill="#0d0205"/>
+  <rect x="220" y="255" width="45" height="105" fill="#0d0205"/>
+  <ellipse cx="148" cy="155" rx="105" ry="105" fill="url(#glowRSH)"/>
+  <!-- heat wisps -->
+  <path d="M108 80 Q113 64 108 48" stroke="#ff4422" stroke-width="2.5" fill="none" opacity="0.5" stroke-linecap="round"/>
+  <path d="M148 74 Q153 56 148 40" stroke="#ff6633" stroke-width="2.5" fill="none" opacity="0.5" stroke-linecap="round"/>
+  <path d="M188 80 Q193 64 188 48" stroke="#ff4422" stroke-width="2.5" fill="none" opacity="0.5" stroke-linecap="round"/>
+  <!-- legs dark -->
+  <rect x="80" y="270" width="58" height="90" rx="12" fill="#442222"/>
+  <rect x="158" y="270" width="58" height="90" rx="12" fill="#442222"/>
+  <!-- torso red feminine -->
+  <ellipse cx="148" cy="260" rx="82" ry="64" fill="#cc1133"/>
+  <ellipse cx="148" cy="274" rx="62" ry="20" fill="#cc1133"/>
+  <!-- subtle muscles -->
+  <path d="M148 220 L148 312" stroke="#aa0e26" stroke-width="1.5" fill="none"/>
+  <path d="M108 242 Q148 234 188 242" stroke="#aa0e26" stroke-width="1.2" fill="none"/>
+  <!-- shoulders -->
+  <ellipse cx="82" cy="236" rx="32" ry="28" fill="#cc1133"/>
+  <ellipse cx="214" cy="236" rx="32" ry="28" fill="#cc1133"/>
+  <!-- neck -->
+  <rect x="128" y="186" width="40" height="30" rx="7" fill="#cc1133"/>
+  <!-- HEAD -->
+  <ellipse cx="148" cy="154" rx="72" ry="74" fill="#cc1133"/>
+  <rect x="94" y="168" width="108" height="48" rx="12" fill="#cc1133"/>
+  <!-- brow -->
+  <rect x="90" y="140" width="116" height="18" rx="5" fill="#aa0e26"/>
+  <!-- EYES glowing feminine -->
+  <ellipse cx="119" cy="152" rx="22" ry="17" fill="#ffaa00"/>
+  <ellipse cx="177" cy="152" rx="22" ry="17" fill="#ffaa00"/>
+  <ellipse cx="119" cy="154" rx="13" ry="12" fill="#ff5500"/>
+  <ellipse cx="177" cy="154" rx="13" ry="12" fill="#ff5500"/>
+  <ellipse cx="119" cy="154" rx="6" ry="7" fill="#220000"/>
+  <ellipse cx="177" cy="154" rx="6" ry="7" fill="#220000"/>
+  <ellipse cx="114" cy="148" rx="4" ry="3" fill="#ffeeaa" opacity="0.9"/>
+  <ellipse cx="172" cy="148" rx="4" ry="3" fill="#ffeeaa" opacity="0.9"/>
+  <!-- glow rings -->
+  <ellipse cx="119" cy="152" rx="22" ry="17" fill="none" stroke="#ff8800" stroke-width="1.5" opacity="0.6"/>
+  <ellipse cx="177" cy="152" rx="22" ry="17" fill="none" stroke="#ff8800" stroke-width="1.5" opacity="0.6"/>
+  <!-- feminine eyebrows -->
+  <path d="M94 138 Q119 130 144 136" stroke="#7a0018" stroke-width="5" fill="none" stroke-linecap="round"/>
+  <path d="M152 136 Q177 130 202 138" stroke="#7a0018" stroke-width="5" fill="none" stroke-linecap="round"/>
+  <!-- nose -->
+  <path d="M138 168 Q148 175 158 168" stroke="#aa0e26" stroke-width="2" fill="none"/>
+  <!-- mouth fierce -->
+  <path d="M110 184 Q148 193 186 184" stroke="#7a0018" stroke-width="2.5" fill="none"/>
+  <ellipse cx="148" cy="186" rx="24" ry="6" fill="#dd3366" opacity="0.7"/>
+  <!-- ears -->
+  <ellipse cx="76" cy="155" rx="12" ry="18" fill="#cc1133"/>
+  <ellipse cx="220" cy="155" rx="12" ry="18" fill="#cc1133"/>
+  <!-- long dark red hair -->
+  <path d="M78 118 Q148 83 218 118" stroke="#660015" stroke-width="22" fill="none" stroke-linecap="round"/>
+  <path d="M78 128 Q64 180 70 232" stroke="#660015" stroke-width="17" fill="none" stroke-linecap="round"/>
+  <path d="M218 128 Q232 180 226 232" stroke="#660015" stroke-width="17" fill="none" stroke-linecap="round"/>
+  <!-- label -->
+  <rect x="38" y="326" width="220" height="28" rx="8" fill="#7a0018" opacity="0.95"/>
+  <text x="148" y="345" text-anchor="middle" font-family="Arial Black,sans-serif" font-size="13" font-weight="900" fill="#ffaacc">RED SHE-HULK</text>
+</svg>`;
+}
+
+// ── draw staff face as small circular inset over hero image ──────────────────
+function drawFaceInset(ctx, photoImg, px, py, pw, ph) {
+  // Place a circular face inset in the upper-right corner of the hero box
+  const r = 52; // radius
+  const cx = px + pw - r - 10;
+  const cy = py + r + 10;
+
+  // Gold border ring
+  ctx.save();
+  ctx.beginPath(); ctx.arc(cx, cy, r + 4, 0, Math.PI * 2);
+  const goldG = ctx.createLinearGradient(cx - r, cy - r, cx + r, cy + r);
+  goldG.addColorStop(0,    '#FFF5B0');
+  goldG.addColorStop(0.4,  '#FFD700');
+  goldG.addColorStop(0.7,  '#DAA520');
+  goldG.addColorStop(1,    '#8B6508');
+  ctx.fillStyle = goldG;
+  ctx.fill();
+  ctx.restore();
+
+  // Clip to circle and draw photo
+  ctx.save();
+  ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.clip();
+  ctx.drawImage(photoImg, cx - r, cy - r, r * 2, r * 2);
+  ctx.restore();
+}
+
 // ── main generate ──────────────────────────────────────────────────────────────
 function generateCard() {
-  const store = document.getElementById('store').value;
-  const staff = document.getElementById('staff').value.trim();
-  const bill  = document.getElementById('billval').value.trim();
+  const store  = document.getElementById('store').value;
+  const staff  = document.getElementById('staff').value.trim();
+  const gender = document.getElementById('gender').value;
+  const bill   = document.getElementById('billval').value.trim();
 
-  if (!store || !staff || !bill) {
+  if (!store || !staff || !gender || !bill) {
     alert('Please fill all fields before generating.');
     return;
   }
@@ -238,9 +734,25 @@ function generateCard() {
   window._bigBillOffscreen = offscreen;
   const octx = offscreen.getContext('2d');
 
-  function draw(photoImg, logoImg) {
-    // Draw on both visible and offscreen canvas
-    [ctx, octx].forEach(c => drawOnCtx(c, photoImg, logoImg));
+  const heroTier = getHeroTier(bill);
+
+  async function draw(photoImg, logoImg) {
+    // Draw base card on both canvases, then apply hero overlay
+    for (const c of [ctx, octx]) {
+      drawOnCtx(c, photoImg, logoImg);
+    }
+    // Hero overlay: replaces the photo box on both canvases
+    if (heroTier > 0) {
+      for (const c of [ctx, octx]) {
+        await drawHeroOverlay(c, 440, 298, 296, 360, heroTier, gender);
+      }
+      // Draw the staff photo as a small face inset in the top-right of the hero image
+      if (photoImg) {
+        for (const c of [ctx, octx]) {
+          drawFaceInset(c, photoImg, 440, 298, 296, 360);
+        }
+      }
+    }
   }
 
   function drawOnCtx(ctx, photoImg, logoImg) {
@@ -311,22 +823,26 @@ function generateCard() {
     ctx.beginPath(); ctx.roundRect(px, py, pw, ph, 12); ctx.fill();
     ctx.strokeStyle = '#C0392B'; ctx.lineWidth = 3; ctx.stroke();
 
-    if (photoImg) {
-      ctx.save();
-      ctx.beginPath();
-      ctx.roundRect(px, py, pw, ph, 12);
-      ctx.closePath();
-      ctx.clip();
-      ctx.drawImage(photoImg, px, py, pw, ph);
-      ctx.restore();
-      ctx.strokeStyle = '#C0392B'; ctx.lineWidth = 3;
-      ctx.beginPath(); ctx.roundRect(px, py, pw, ph, 12); ctx.stroke();
-    } else {
-      ctx.font = '70px serif';
-      ctx.textAlign = 'center';
-      ctx.fillStyle = '#ccc';
-      ctx.fillText('🧑', px + pw / 2, py + ph / 2 + 22);
+    if (heroTier === 0) {
+      // Normal: show uploaded photo or placeholder
+      if (photoImg) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.roundRect(px, py, pw, ph, 12);
+        ctx.closePath();
+        ctx.clip();
+        ctx.drawImage(photoImg, px, py, pw, ph);
+        ctx.restore();
+        ctx.strokeStyle = '#C0392B'; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.roundRect(px, py, pw, ph, 12); ctx.stroke();
+      } else {
+        ctx.font = '70px serif';
+        ctx.textAlign = 'center';
+        ctx.fillStyle = '#ccc';
+        ctx.fillText('🧑', px + pw / 2, py + ph / 2 + 22);
+      }
     }
+    // When heroTier > 0, the hero SVG + face inset are drawn after drawOnCtx returns
 
     // ── award badge below photo ───────────────────────────────────────────────
     const bx = px + pw / 2, by = py + ph + 46;
@@ -414,13 +930,12 @@ function generateCard() {
 
   // Wait for fonts, then draw
   document.fonts.ready.then(() => {
-    // Use the preview <img> element directly — it is already loaded and on screen
     const previewImg = document.getElementById('previewImg');
-    const photoImg = window._staffPhoto || null;
+    const photoImg = (previewImg && previewImg.naturalWidth > 0) ? previewImg : null;
 
     const logoImg = new Image();
-    logoImg.onload = () => draw(photoImg, logoImg);
-    logoImg.onerror = () => draw(photoImg, null);
+    logoImg.onload = () => { draw(photoImg, logoImg); };
+    logoImg.onerror = () => { draw(photoImg, null); };
     logoImg.src = LOGO_B64;
   });
 }
